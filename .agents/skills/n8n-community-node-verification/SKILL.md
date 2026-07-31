@@ -1,6 +1,6 @@
 ---
 name: "n8n-community-node-verification"
-version: "1.2.0"
+version: "1.3.0"
 description: "Verify and diagnose the n8n community node package in this standalone integrations-n8n repo, including Creator Portal npm-metadata failures, builds, n8n linter constraints, Podman loading, and real workflow execution."
 license: "MIT"
 compatibility: "opencode"
@@ -54,8 +54,10 @@ Do not use this skill for ordinary TypeScript library tests, generic Docker chec
    - Compute the release from the repository root with `cycjimmy/semantic-release-action` in dry-run mode and `tagFormat: n8n-node-v${version}`.
    - In this repo, release-producing commits should use the `n8n-node` conventional-commit scope, such as `fix(n8n-node): ...`, `perf(n8n-node): ...`, or `feat(n8n-node): ...`.
    - Before packing in CI, apply the computed package version with `npm version "$VERSION" --no-git-tag-version --allow-same-version`.
-   - Pull-request and snapshot versions remain runner-only. For a real release, run the same version command during semantic-release's prepare phase and use `@semantic-release/git` to commit `package.json` and `package-lock.json` before creating the tag, GitHub release, and npm publication.
-   - Keep `[skip ci]` in the generated release commit. GitHub does not create a recursive workflow run for pushes authenticated with the workflow's `GITHUB_TOKEN`, but the marker also protects other CI providers.
+   - Snapshot versions remain runner-only. When `main` requires pull requests, commit `package.json` and `package-lock.json` on a deterministic `release/n8n-node-vX.Y.Z` branch and merge them through the required review and status checks before creating the tag, GitHub release, and npm publication.
+   - Keep version-PR automation explicit: commit and push only the two manifests with Git, then create the PR with GitHub CLI using `GITHUB_TOKEN`.
+   - Do not put `[skip ci]` in a protected release-PR commit; the PR must run its required checks.
+   - If npm has a published version but semantic-release finds no corresponding tag, fail before preparing a release. Push or restore the published version's baseline tag instead of accepting semantic-release's initial `1.0.0`.
    - On main pushes, create the attempted package artifact before release approval, then gate semantic-release tag creation, GitHub Release creation, and npm publish behind the GitHub environment named `release`.
    - Publish n8n community nodes from GitHub Actions with `npm publish --provenance --access public` using npm Trusted Publishing; do not add `NPM_TOKEN` fallback paths.
    - Trusted Publishing requires a new enough CI toolchain. Use Node 24 for the publish workflow, install npm `^11.5.1`, and fail early if `node` or `npm` is below npm's current OIDC minimums.
@@ -120,7 +122,7 @@ podman run --rm -it --user 0 -p 5678:5678 \
 - Do not assume Node 22's bundled npm supports Trusted Publishing; Node can satisfy the runtime requirement while npm is still too old for OIDC publishing.
 - Do not add an `NPM_TOKEN` secret fallback for this package; token auth hides Trusted Publishing misconfiguration and is not the intended release path.
 - In a multi-integration repository, avoid repo-wide `vX.Y.Z` tags for n8n releases; they collide with unrelated integration versions.
-- Do not let package-created release tags retrigger the package workflow; the approved release job should create the tag after the artifact has already been tested and packed.
+- Do not let package-created release tags retrigger the package workflow; the approved release job should create the tag after the committed release PR has been tested and packed.
 - Do not make release jobs derive the next n8n version from `package.json`; calculate it from semantic-release tags, then persist that calculated version in the release commit.
 - Do not diagnose `Error getting author email from npm` from the npm website sidebar or maintainer profile alone. Inspect the live latest-version `author.email` field directly.
 - Kotlin/JS bundles can retain the browser-only `BufferedOutputToConsoleLog` through metadata registration even after console calls are dropped. For Node-only packages, remove the unreachable browser fallback during bundling and assert the class name is absent from the packed artifact.
@@ -139,7 +141,7 @@ Before finishing, run:
 - when a transport dependency is under evaluation, run that exact-tarball scanner gate before the full integration and n8n runtime suite
 - import and execute a bundled operation from the extracted package with no bundled-library package installed, while supplying only n8n's peer dependency
 - load `release.config.cjs` and confirm `tagFormat` is `n8n-node-v${version}`
-- confirm real-release configuration updates and commits both `package.json` and `package-lock.json` before the release tag is created
+- confirm real-release configuration updates and commits both `package.json` and `package-lock.json` through the protected release PR before the release tag is created
 - parse or lint the GitHub Actions workflow after release-flow edits; use `actionlint` when available
 - `npm publish <tarball> --dry-run --access public` with an isolated npm cache when the host cache is read-only
 - `npm view "$PACKAGE_NAME@latest" author maintainers --json` and confirm `author.email` is present for Creator Portal submissions

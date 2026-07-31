@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-  pull_request:
 
 permissions:
   contents: read
@@ -17,10 +16,11 @@ jobs:
     permissions:
       contents: write
     outputs:
-      has_release: ${{ steps.metadata.outputs.has_release }}
       package_version: ${{ steps.metadata.outputs.package_version }}
       release_version: ${{ steps.metadata.outputs.release_version }}
       release_tag: ${{ steps.metadata.outputs.release_tag }}
+      needs_version_commit: ${{ steps.metadata.outputs.needs_version_commit }}
+      release_ready: ${{ steps.metadata.outputs.release_ready }}
 
     steps:
       - name: Checkout
@@ -35,53 +35,60 @@ jobs:
 
       - id: semantic
         name: Semantic Release Dry Run
-        if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]') }}
         uses: cycjimmy/semantic-release-action@v6
         with:
           semantic_version: 24.2.7
-          extra_plugins: |
-            @semantic-release/exec@7.1.0
-            @semantic-release/git@10.0.1
           dry_run: true
-          ci: ${{ github.event_name == 'pull_request' && 'false' || 'true' }}
-          unset_gha_env: ${{ github.event_name == 'pull_request' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Compute package version
         id: metadata
         env:
-          EVENT_NAME: ${{ github.event_name }}
           GITHUB_REF_NAME_FULL: ${{ github.ref }}
-          NEW_RELEASE_VERSION: ${{ steps.semantic.outputs.new_release_version }}
           LAST_RELEASE_VERSION: ${{ steps.semantic.outputs.last_release_version }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          NEW_RELEASE_VERSION: ${{ steps.semantic.outputs.new_release_version }}
           SHA: ${{ github.sha }}
         run: |
+          package_name="$(node -p 'require("./package.json").name')"
+          current_version="$(node -p 'require("./package.json").version')"
+          published_version="$(npm view "$package_name@latest" version)"
+
+          if [ -n "$published_version" ] && [ -z "$LAST_RELEASE_VERSION" ]; then
+            echo "::error::npm latest is $published_version, but tag n8n-node-v$published_version is missing from Git history."
+            echo "::error::Push the baseline tag before retrying; refusing semantic-release's initial 1.0.0."
+            exit 1
+          fi
+
           base_version="${NEW_RELEASE_VERSION:-${LAST_RELEASE_VERSION:-0.0.0}}"
           short_sha="${SHA:0:12}"
-          has_release=false
+          needs_version_commit=false
+          release_ready=false
           release_version="$base_version"
           release_tag=""
 
           if [ -n "$NEW_RELEASE_VERSION" ]; then
             package_version="$NEW_RELEASE_VERSION"
-          elif [ "$EVENT_NAME" = "pull_request" ]; then
-            package_version="${base_version}-pr.${PR_NUMBER}.sha${short_sha}"
           else
             package_version="${base_version}-snapshot.sha${short_sha}"
           fi
 
-          if [ "$EVENT_NAME" = "push" ] && [ "$GITHUB_REF_NAME_FULL" = "refs/heads/main" ] && [ -n "$NEW_RELEASE_VERSION" ]; then
-            has_release=true
+          if [ "$GITHUB_REF_NAME_FULL" = "refs/heads/main" ] && [ -n "$NEW_RELEASE_VERSION" ]; then
             release_version="$NEW_RELEASE_VERSION"
             release_tag="n8n-node-v$NEW_RELEASE_VERSION"
+
+            if [ "$current_version" = "$NEW_RELEASE_VERSION" ]; then
+              release_ready=true
+            else
+              needs_version_commit=true
+            fi
           fi
 
-          echo "has_release=$has_release" >> "$GITHUB_OUTPUT"
           echo "package_version=$package_version" >> "$GITHUB_OUTPUT"
           echo "release_version=$release_version" >> "$GITHUB_OUTPUT"
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "needs_version_commit=$needs_version_commit" >> "$GITHUB_OUTPUT"
+          echo "release_ready=$release_ready" >> "$GITHUB_OUTPUT"
 
   test-and-pack:
     name: Test and pack
@@ -127,12 +134,82 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  version-pr:
+    name: Version PR
+    needs:
+      - version
+      - test-and-pack
+    if: needs.version.outputs.needs_version_commit == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: n8n-node-release-preparation-${{ needs.version.outputs.release_version }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Apply release version
+        env:
+          RELEASE_TAG: ${{ needs.version.outputs.release_tag }}
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
+        run: |
+          npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
+          npm run validate:release-tag -- "$RELEASE_TAG"
+
+      - name: Commit and push version
+        env:
+          RELEASE_TAG: ${{ needs.version.outputs.release_tag }}
+        run: |
+          release_branch="release/$RELEASE_TAG"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$release_branch"
+          git add package.json package-lock.json
+          git diff --cached --check
+          git commit -m "chore(release): $RELEASE_TAG"
+
+          if git ls-remote --exit-code --heads origin "$release_branch" >/dev/null 2>&1; then
+            echo "::notice::Release branch $release_branch already exists; leaving it unchanged."
+          else
+            git push origin "HEAD:refs/heads/$release_branch"
+          fi
+
+      - name: Open version PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.version.outputs.release_tag }}
+        run: |
+          release_branch="release/$RELEASE_TAG"
+          existing_pr="$(gh pr list --head "$release_branch" --base main --state open --json url --jq '.[0].url')"
+
+          if [ -n "$existing_pr" ]; then
+            echo "Version PR already exists: $existing_pr"
+          else
+            gh pr create \
+              --base main \
+              --head "$release_branch" \
+              --title "chore(release): $RELEASE_TAG" \
+              --body "Commits the CI-calculated package version before tagging and publishing $RELEASE_TAG."
+          fi
+
   release:
     name: Release
     needs:
       - version
       - test-and-pack
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.version.outputs.has_release == 'true'
+    if: needs.version.outputs.release_ready == 'true'
     runs-on: ubuntu-latest
     environment: release
     concurrency:
@@ -181,9 +258,6 @@ jobs:
         uses: cycjimmy/semantic-release-action@v6
         with:
           semantic_version: 24.2.7
-          extra_plugins: |
-            @semantic-release/exec@7.1.0
-            @semantic-release/git@10.0.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -167,9 +167,11 @@ Use conventional commits to select the next release version. Release-producing c
 git commit -m "fix(n8n-node): describe the fix"
 ```
 
-On pushes to `main`, GitHub Actions calculates the next version from the latest `n8n-node-vX.Y.Z` tag, tests and packs the attempted version, then waits for approval in the `release` environment. After approval, semantic-release updates `package.json` and `package-lock.json`, commits both files with the release version, creates the matching tag and GitHub release, and publishes the tested `.tgz` to npm.
+On pushes to `main`, GitHub Actions calculates the next version from the latest `n8n-node-vX.Y.Z` tag and tests the attempted package. When the manifests need updating, CI commits both files on `release/n8n-node-vX.Y.Z` and opens a release PR. After that protected PR is reviewed and merged, the next `main` run verifies the committed version, waits for approval in the `release` environment, creates the matching tag and GitHub release, and publishes the tested `.tgz` to npm.
 
-Do not bump `package.json` manually. Pull-request and snapshot versions exist only in their workflow runners; successful releases commit the version so the repository and npm stay synchronized.
+Do not bump `package.json` manually. Snapshot versions exist only in their workflow runners; successful releases commit the version through the protected release PR so the repository and npm stay synchronized.
+
+Allow GitHub Actions to create pull requests under **Settings → Actions → General → Workflow permissions**. A version PR created with `GITHUB_TOKEN` may require a maintainer to approve its workflow run before the required `test / test` check starts.
 
 Configure npm Trusted Publishing for `.github/workflows/n8n-node-package.yml`.
 

@@ -5,20 +5,6 @@ module.exports = {
 		"@semantic-release/commit-analyzer",
 		"@semantic-release/release-notes-generator",
 		[
-			"@semantic-release/exec",
-			{
-				prepareCmd:
-					'npm version "${nextRelease.version}" --no-git-tag-version --allow-same-version && npm run validate:release-tag -- "${nextRelease.gitTag}"',
-			},
-		],
-		[
-			"@semantic-release/git",
-			{
-				assets: ["package.json", "package-lock.json"],
-				message: "chore(release): ${nextRelease.gitTag} [skip ci]",
-			},
-		],
-		[
 			"@semantic-release/github",
 			{
 				assets: [
