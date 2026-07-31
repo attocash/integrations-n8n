@@ -39,6 +39,9 @@ jobs:
         uses: cycjimmy/semantic-release-action@v6
         with:
           semantic_version: 24.2.7
+          extra_plugins: |
+            @semantic-release/exec@7.1.0
+            @semantic-release/git@10.0.1
           dry_run: true
           ci: ${{ github.event_name == 'pull_request' && 'false' || 'true' }}
           unset_gha_env: ${{ github.event_name == 'pull_request' }}
@@ -153,18 +156,83 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org/"
 
+      - name: Install Trusted Publishing npm version
+        run: npm install --global "npm@^11.5.1"
+
+      - name: Verify release toolchain
+        run: |
+          node_version="$(node --version | sed 's/^v//')"
+          npm_version="$(npm --version)"
+
+          node -e 'const [major, minor] = process.argv[1].split(".").map(Number); if (major < 22 || (major === 22 && minor < 14)) process.exit(1)' "$node_version"
+          node -e 'const [major, minor, patch] = process.argv[1].split(".").map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) process.exit(1)' "$npm_version"
+
+          echo "Node.js $node_version"
+          echo "npm $npm_version"
+
       - name: Download package artifact
         uses: actions/download-artifact@v4
         with:
           name: attocash-n8n-nodes-atto-package
           path: artifacts
 
-      - name: Create GitHub release
+      - id: semantic
+        name: Create GitHub release
         uses: cycjimmy/semantic-release-action@v6
         with:
           semantic_version: 24.2.7
+          extra_plugins: |
+            @semantic-release/exec@7.1.0
+            @semantic-release/git@10.0.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify committed release version
+        env:
+          ACTUAL_RELEASE_VERSION: ${{ steps.semantic.outputs.new_release_version }}
+          RELEASE_TAG: ${{ needs.version.outputs.release_tag }}
+          RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
+        run: |
+          node -e '
+            const { readFileSync } = require("node:fs");
+            const expected = process.env.RELEASE_VERSION;
+            const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+            const packageLock = JSON.parse(readFileSync("package-lock.json", "utf8"));
+
+            if (process.env.ACTUAL_RELEASE_VERSION !== expected) {
+              throw new Error(
+                `semantic-release version ${process.env.ACTUAL_RELEASE_VERSION} does not match ${expected}`,
+              );
+            }
+
+            for (const [source, actual] of [
+              ["package.json", packageJson.version],
+              ["package-lock.json", packageLock.version],
+              ["package-lock.json root package", packageLock.packages?.[""]?.version],
+            ]) {
+              if (actual !== expected) {
+                throw new Error(`${source} version ${actual} does not match ${expected}`);
+              }
+            }
+          '
+          npm run validate:release-tag -- "$RELEASE_TAG"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+          package_files=(artifacts/*.tgz)
+          test "${#package_files[@]}" -eq 1
+          for manifest in package/package.json package/dist/package.json; do
+            artifact_version="$(
+              tar -xOf "${package_files[0]}" "$manifest" |
+                node -e '
+                  let input = "";
+                  process.stdin.setEncoding("utf8");
+                  process.stdin.on("data", (chunk) => (input += chunk));
+                  process.stdin.on("end", () => process.stdout.write(JSON.parse(input).version));
+                '
+            )"
+            test "$artifact_version" = "$RELEASE_VERSION"
+          done
 
       - name: Publish to npm
         run: npm publish ./artifacts/*.tgz --provenance --access public

@@ -161,16 +161,15 @@ Restart n8n after the script finishes.
 
 ## Maintainers
 
-Use normal semver in `package.json`; release tags use the package-specific format `n8n-node-vX.Y.Z`.
+Use conventional commits to select the next release version. Release-producing changes use the `n8n-node` scope:
 
 ```bash
-npm version patch --no-git-tag-version
-git add package.json package-lock.json
-git commit -m "Release n8n Atto node vX.Y.Z"
-git push origin main
+git commit -m "fix(n8n-node): describe the fix"
 ```
 
-On pushes to `main`, GitHub Actions tests and packs the attempted version, uploads the `.tgz` artifact, then waits for approval in the `release` environment. After approval, it creates the tag, publishes `@attocash/n8n-nodes-atto` to npm, and creates the GitHub release.
+On pushes to `main`, GitHub Actions calculates the next version from the latest `n8n-node-vX.Y.Z` tag, tests and packs the attempted version, then waits for approval in the `release` environment. After approval, semantic-release updates `package.json` and `package-lock.json`, commits both files with the release version, creates the matching tag and GitHub release, and publishes the tested `.tgz` to npm.
+
+Do not bump `package.json` manually. Pull-request and snapshot versions exist only in their workflow runners; successful releases commit the version so the repository and npm stay synchronized.
 
 Configure npm Trusted Publishing for `.github/workflows/n8n-node-package.yml`.
 
