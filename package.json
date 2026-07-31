@@ -61,7 +61,7 @@
   "devDependencies": {
     "@attocash/commons-core": "7.0.2",
     "@attocash/commons-test": "7.0.2",
-    "@n8n/node-cli": "0.32.1",
+    "@n8n/node-cli": "0.41.2",
     "@types/node": "^22.15.21",
     "esbuild": "0.27.1",
     "eslint": "9.29.0",
