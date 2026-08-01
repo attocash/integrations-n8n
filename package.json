@@ -1,6 +1,6 @@
 {
   "name": "@attocash/n8n-nodes-atto",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Atto cryptocurrency wallet, transaction, account, and trigger nodes for n8n, powered by Atto Commons",
   "license": "MIT",
   "keywords": [
