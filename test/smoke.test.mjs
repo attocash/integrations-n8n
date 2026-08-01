@@ -25,6 +25,7 @@ test('build artifacts required by n8n are present', async () => {
 	for (const file of required) {
 		assert.equal(existsSync(file), true, `${file} should exist`);
 	}
+	assert.equal(existsSync('dist/docs'), false, 'README images should not ship in the runtime dist');
 
 	const node = await import('../dist/nodes/Atto/Atto.node.js');
 	const trigger = await import('../dist/nodes/AttoTrigger/AttoTrigger.node.js');

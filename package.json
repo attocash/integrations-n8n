@@ -56,7 +56,7 @@
     "validate:release-tag": "node scripts/validate-release-tag.mjs"
   },
   "engines": {
-    "node": ">=22.16"
+    "node": ">=22.22.0"
   },
   "devDependencies": {
     "@attocash/commons-core": "7.0.2",

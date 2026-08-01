@@ -18,7 +18,7 @@ Output includes whether the account was found plus balance, representative addre
 
 ## Receivable: Get
 
-Use **Receivable > Get** to collect receivable entries for the credentials-derived address or manual addresses. The operation uses Atto Commons stream APIs and returns when either **Max Items** is reached or **Timeout** expires.
+Use **Receivable > Get** to collect receivable entries for the credentials-derived address or manual addresses. The operation reads the Atto NDJSON endpoint through n8n's HTTP helpers and returns when either **Max Items** is reached or **Timeout** expires.
 
 ## Transaction: Get
 
@@ -33,6 +33,7 @@ Use **Account Entry > Get** to fetch an account entry by hash or collect a bound
 Use **Transaction > Send** with:
 
 - wallet secret from credentials or node parameters
+- Node Base URL and Worker Base URL
 - Destination Address
 - Amount and Amount Unit
 
@@ -40,15 +41,15 @@ The source address is derived from the wallet secret and key index. The node sig
 
 ## Receivable: Receive
 
-Use **Receivable > Receive** with a signing wallet after an **Atto Trigger** receivable event or **Receivable > Get** node. The receiving address is derived from the wallet secret and key index. The node receives the incoming item's `receivable` payload, publishes a receive block, and returns the receive hash, amount, and receivable JSON.
+Use **Receivable > Receive** with a signing wallet, Node Base URL, and Worker Base URL after an **Atto Trigger** receivable event or **Receivable > Get** node. The receiving address is derived from the wallet secret and key index. The node receives the incoming item's `receivable` payload, publishes a receive block, and returns the receive hash, amount, and receivable JSON.
 
 ## Representative: Change
 
-Use **Representative > Change** with a signing wallet and representative address. The source address is derived from the wallet secret and key index. The node signs through Atto Commons and returns the change transaction hash and status.
+Use **Representative > Change** with a signing wallet, Node Base URL, Worker Base URL, and representative address. The source address is derived from the wallet secret and key index. The node signs through Atto Commons and returns the change transaction hash and status.
 
 ## Atto Trigger
 
-Use **Atto Trigger** for receivables, account updates, transactions, and account entries. Trigger filters can use the credentials-derived address, manual addresses, all supported stream items, or a hash where supported. The trigger reconnects automatically when its Atto NDJSON stream closes.
+Use **Atto Trigger** for receivables, account updates, transactions, and account entries. Triggers require the Node Base URL. Filters can use the credentials-derived address, manual addresses, all supported stream items, or a hash where supported. Credential-derived filters also require wallet material. The trigger reconnects automatically when its Atto NDJSON stream closes.
 
 ## Private Keys
 

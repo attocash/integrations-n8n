@@ -6,6 +6,7 @@ import { build } from "esbuild";
 
 const DIST_DIRECTORY = "dist";
 const BUNDLE_DIRECTORY = join(DIST_DIRECTORY, ".bundled");
+const DOCS_DIRECTORY = join(DIST_DIRECTORY, "docs");
 const PROTOCOL_ENTRY = join(DIST_DIRECTORY, "nodes", "Atto", "protocol.js");
 const BUNDLED_PROTOCOL = join(BUNDLE_DIRECTORY, "protocol.js");
 const BUILTIN_MODULES = new Set([
@@ -129,5 +130,6 @@ async function validateRuntimeArtifacts() {
 }
 
 await bundleRuntime();
+await rm(DOCS_DIRECTORY, { recursive: true, force: true });
 await removeDevelopmentArtifacts(DIST_DIRECTORY);
 await validateRuntimeArtifacts();

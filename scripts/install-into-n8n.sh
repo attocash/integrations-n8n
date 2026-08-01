@@ -37,7 +37,7 @@ package_version=$(node -p "require('./package.json').version")
 if [ -n "${N8N_NODES_DIR:-}" ]; then
 	n8n_nodes_dir=$N8N_NODES_DIR
 elif [ -n "${N8N_USER_FOLDER:-}" ]; then
-	n8n_nodes_dir=${N8N_USER_FOLDER%/}/nodes
+	n8n_nodes_dir=${N8N_USER_FOLDER%/}/.n8n/nodes
 elif [ -n "${HOME:-}" ]; then
 	n8n_nodes_dir=$HOME/.n8n/nodes
 else
