@@ -141,6 +141,7 @@ jobs:
       - test-and-pack
     if: needs.version.outputs.needs_version_commit == 'true'
     runs-on: ubuntu-latest
+    environment: release
     concurrency:
       group: n8n-node-release-preparation-${{ needs.version.outputs.release_version }}
       cancel-in-progress: false
