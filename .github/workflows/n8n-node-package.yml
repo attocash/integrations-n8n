@@ -54,13 +54,13 @@ jobs:
           current_version="$(node -p 'require("./package.json").version')"
           published_version="$(npm view "$package_name@latest" version)"
 
-          if [ -n "$published_version" ] && [ -z "$LAST_RELEASE_VERSION" ]; then
+          if [ -n "$published_version" ] && [ -z "$LAST_RELEASE_VERSION" ] && [ -n "$NEW_RELEASE_VERSION" ]; then
             echo "::error::npm latest is $published_version, but tag n8n-node-v$published_version is missing from Git history."
             echo "::error::Push the baseline tag before retrying; refusing semantic-release's initial 1.0.0."
             exit 1
           fi
 
-          base_version="${NEW_RELEASE_VERSION:-${LAST_RELEASE_VERSION:-0.0.0}}"
+          base_version="${NEW_RELEASE_VERSION:-${LAST_RELEASE_VERSION:-$current_version}}"
           short_sha="${SHA:0:12}"
           needs_version_commit=false
           release_ready=false
