@@ -1,6 +1,6 @@
 ---
 name: "n8n-community-node-verification"
-version: "1.3.0"
+version: "1.3.1"
 description: "Verify and diagnose the n8n community node package in this standalone integrations-n8n repo, including Creator Portal npm-metadata failures, builds, n8n linter constraints, Podman loading, and real workflow execution."
 license: "MIT"
 compatibility: "opencode"
@@ -49,6 +49,7 @@ Do not use this skill for ordinary TypeScript library tests, generic Docker chec
    - Before building extensive coverage around a new runtime dependency, pack the smallest integration and scan that exact artifact. Abort the dependency approach early if generated code introduces scanner-forbidden globals or Node built-ins.
    - For persistent NDJSON APIs, a scanner-safe fallback is n8n's `helpers.httpRequest` with `encoding: 'stream'`, an `AbortSignal`, and endpoint DTOs verified against the canonical client source. Keep the protocol/model library bundled if it passes independently; do not bundle a generated transport merely to preserve its wrapper API.
    - For CI artifacts, run `npm pack --pack-destination artifacts` after tests and upload `artifacts/*.tgz`.
+   - `n8n-node build` copies every repository PNG and SVG into `dist`, including README assets. Remove non-runtime documentation directories in the post-build step and assert they are absent before packing; keep README images in the repository and link them with absolute repository URLs so npm can render them without shipping them in the runtime tarball.
    - If sandboxed `npm pack` fails writing to the host npm cache, rerun with an isolated cache such as `npm --cache /tmp/npm-cache pack --pack-destination <dir>`.
    - For npm releases, use package-scoped semantic-release tags such as `n8n-node-vX.Y.Z`; semantic-release tags remain the source of truth for calculating the next version.
    - Compute the release from the repository root with `cycjimmy/semantic-release-action` in dry-run mode and `tagFormat: n8n-node-v${version}`.
@@ -70,13 +71,13 @@ Do not use this skill for ordinary TypeScript library tests, generic Docker chec
 4. Verify in real n8n with Podman.
    - Build first.
    - Use a writable n8n user folder and mount the package under `nodes/node_modules`.
-   - For rootless Podman host-directory permission issues, run the verification container as root inside the container and set `N8N_USER_FOLDER=/home/node`.
+   - For a host-owned temporary user folder under rootless Podman, prefer `--userns=keep-id` so n8n's UID 1000 can write its config and database without leaving root-owned files. Set `N8N_USER_FOLDER=/home/node`.
 
 Example server command:
 
 ```bash
 mkdir -p /tmp/n8n-local-verify/.n8n/nodes/node_modules
-podman run --rm -it --user 0 -p 5678:5678 \
+podman run --rm -it --userns=keep-id -p 5678:5678 \
   -e N8N_USER_FOLDER=/home/node \
   -e N8N_COMMUNITY_PACKAGES_ENABLED=true \
   -e N8N_SECURE_COOKIE=false \
@@ -92,6 +93,7 @@ podman run --rm -it --user 0 -p 5678:5678 \
    - Include at least one workflow that omits UI-defaulted parameters such as `operation`; this catches `Could not get parameter` failures that unit tests with explicit parameters can miss.
    - For trigger nodes, add a direct unit test around `trigger.trigger.call(ctx)` with a context whose `getNodeParameter` throws unless the node supplies a fallback. Use the trigger signature `getNodeParameter(name, fallback)`, not the action-node signature `getNodeParameter(name, itemIndex, fallback)`.
    - Do not run `n8n execute` inside the same live server process/container if the task broker port is already in use. Stop the server after the HTTP/UI load check, then run a one-shot n8n CLI container with the same temporary user folder and package mount.
+   - When the server should remain running, set up and log in to a disposable owner through the REST API, create the workflow through `POST /rest/workflows`, execute it from the editor's `data-test-id="execute-workflow-button"` control, and confirm success through the executions REST endpoint. This proves the real editor/runtime path without a second CLI process.
    - Delete temporary n8n user folders that contain workflow secrets after verification.
 
 6. Verify credential tests through n8n when changing credential definitions.
@@ -101,7 +103,7 @@ podman run --rm -it --user 0 -p 5678:5678 \
    - Use disposable wallet material only, because n8n stores the credential in the temporary user folder.
 
 7. For checkout-based installs inside an n8n container, keep host installs isolated.
-   - Add a package script that builds, validates, packs, and installs the `.tgz` into `${N8N_USER_FOLDER:-$HOME/.n8n}/nodes`.
+   - Add a package script that builds, validates, packs, and installs the `.tgz` into `N8N_NODES_DIR` when explicitly set, otherwise `${N8N_USER_FOLDER}/.n8n/nodes`, otherwise `${HOME}/.n8n/nodes`.
    - Default to build plus a local smoke validation; make full tests opt-in because containerized n8n often lacks Docker or Podman access for integration tests.
    - Verify installer behavior in an ephemeral Podman container by copying the package source into the container and installing only into the container filesystem.
 
@@ -109,6 +111,7 @@ podman run --rm -it --user 0 -p 5678:5678 \
 
 - Mounting only the package directory can leave `/home/node/.n8n/nodes` unwritable; mount a writable parent user folder too.
 - `N8N_USER_FOLDER=/home/node/.n8n` creates a nested `.n8n` folder; use `N8N_USER_FOLDER=/home/node`.
+- Rootless Podman remaps container UID 1000 unless keep-id mapping is requested; a host directory owned by UID 1000 can still produce `EACCES` inside the default container user without `--userns=keep-id`.
 - If `curl http://127.0.0.1:5678` cannot reach a container that logs as ready, set `N8N_LISTEN_ADDRESS=0.0.0.0`; if a sandbox still blocks local networking, rerun the local curl check outside the sandbox.
 - n8n CLI execution does not accept `--file` reliably in current images; import the workflow and execute by ID.
 - n8n CLI execution can conflict with a running server on the task broker port; use a one-shot CLI container against the same user folder after stopping the server.
@@ -127,6 +130,7 @@ podman run --rm -it --user 0 -p 5678:5678 \
 - Do not diagnose `Error getting author email from npm` from the npm website sidebar or maintainer profile alone. Inspect the live latest-version `author.email` field directly.
 - Kotlin/JS bundles can retain the browser-only `BufferedOutputToConsoleLog` through metadata registration even after console calls are dropped. For Node-only packages, remove the unreachable browser fallback during bundling and assert the class name is absent from the packed artifact.
 - A standalone incremental `tsc --noEmit` can recreate `dist/tsconfig.tsbuildinfo` after the production build removed it. Run the production build immediately before packing and inspect the tarball contents.
+- README screenshots and banners are package documentation, not runtime node assets. Because the n8n build copies all PNG/SVG files, explicitly strip copied documentation assets from `dist` and cover that behavior with a smoke assertion.
 - Run test files serially because the integration and trigger suites share local mock/container resources and can fail nondeterministically when Node schedules them concurrently.
 
 ## Verification
@@ -137,6 +141,7 @@ Before finishing, run:
 - `npm test`
 - `npm pack --pack-destination <temporary-artifact-directory>`
 - extract the exact tarball and confirm both root and nested `dist/package.json` have no `dependencies`
+- confirm the exact tarball excludes documentation images while its README uses absolute image URLs that render from npm
 - run the official scanner's local package analyzer against the extracted tarball before publication; scanning the npm package name checks the previously published version instead
 - when a transport dependency is under evaluation, run that exact-tarball scanner gate before the full integration and n8n runtime suite
 - import and execute a bundled operation from the extracted package with no bundled-library package installed, while supplying only n8n's peer dependency
