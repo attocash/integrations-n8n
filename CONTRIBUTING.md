@@ -34,16 +34,17 @@ npm run dev
 
 For package-boundary changes, also pack the package and test the generated tarball in a clean n8n instance.
 
-## Commit messages
+## Commit messages and versioning
 
-This repository uses conventional commits. Changes that should publish a new package version must use the `n8n-node` scope:
+Releases follow [Semantic Versioning](https://semver.org/). The release workflow determines the next version from [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
 
 ```bash
-git commit -m "fix(n8n-node): describe the fix"
-git commit -m "feat(n8n-node): describe the feature"
+git commit -m "fix(n8n-node): describe the fix"       # patch
+git commit -m "feat(n8n-node): describe the feature"  # minor
+git commit -m "feat(n8n-node)!: describe the change"  # major
 ```
 
-Documentation-only or maintenance changes that do not need a release may use the usual `docs:` or `chore:` types.
+Package changes must use the `n8n-node` scope. A breaking change can instead be declared with a `BREAKING CHANGE:` commit footer. Documentation-only or maintenance commits may use `docs:` or `chore:` and do not create a release.
 
 ## Release process
 

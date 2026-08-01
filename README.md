@@ -5,7 +5,8 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@attocash/n8n-nodes-atto"><img src="https://img.shields.io/npm/v/@attocash/n8n-nodes-atto.svg" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@attocash/n8n-nodes-atto"><img src="https://img.shields.io/npm/dw/@attocash/n8n-nodes-atto.svg" alt="npm weekly downloads"></a>
-  <a href="https://github.com/attocash/integrations-n8n/actions/workflows/n8n-node-package.yml"><img src="https://github.com/attocash/integrations-n8n/actions/workflows/n8n-node-package.yml/badge.svg" alt="n8n Atto Node CI"></a>
+  <a href="https://github.com/attocash/integrations-n8n/actions/workflows/n8n-node-package.yml"><img src="https://github.com/attocash/integrations-n8n/actions/workflows/n8n-node-package.yml/badge.svg" alt="Pipeline status"></a>
+  <a href="https://atto.cash"><img src="https://img.shields.io/badge/website-atto.cash-FAB005.svg" alt="Atto website"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
 </p>
 

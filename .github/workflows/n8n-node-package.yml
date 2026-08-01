@@ -1,4 +1,4 @@
-name: n8n Atto Node
+name: Pipeline
 
 on:
   workflow_dispatch:
