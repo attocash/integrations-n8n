@@ -319,14 +319,14 @@ test('node continue-on-fail returns the original Commons message', async () => {
 	assert.deepEqual(output[0][0].pairedItem, { item: 0 });
 });
 
-test('node descriptions expose streaming triggers without raw-output or polling controls', () => {
+test('node descriptions keep triggers out of AI tools without raw-output or polling controls', () => {
 	const node = new Atto();
 	const trigger = new AttoTrigger();
 	const simplify = node.description.properties.find((property) => property.name === 'simplify');
 	const pollTimes = trigger.description.properties.find((property) => property.name === 'pollTimes');
 
 	assert.equal(node.description.usableAsTool, true);
-	assert.equal(trigger.description.usableAsTool, true);
+	assert.equal(Object.hasOwn(trigger.description, 'usableAsTool'), false);
 	assert.equal(simplify, undefined);
 	assert.equal(trigger.description.polling, undefined);
 	assert.equal(pollTimes, undefined);
