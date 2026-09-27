@@ -1,6 +1,6 @@
 ---
 name: "n8n-community-node-verification"
-version: "1.3.1"
+version: "1.3.2"
 description: "Verify and diagnose the n8n community node package in this standalone integrations-n8n repo, including Creator Portal npm-metadata failures, builds, n8n linter constraints, Podman loading, and real workflow execution."
 license: "MIT"
 compatibility: "opencode"
@@ -123,6 +123,7 @@ podman run --rm -it --userns=keep-id -p 5678:5678 \
 - Do not verify checkout installers against the host `~/.n8n`; use a temporary directory or, preferably, an ephemeral Podman n8n container.
 - For npm Trusted Publishing, configure npm with the exact GitHub workflow filename used by the publish job.
 - Do not assume Node 22's bundled npm supports Trusted Publishing; Node can satisfy the runtime requirement while npm is still too old for OIDC publishing.
+- In `@n8n/node-cli` 0.41.2, `node-usable-as-tool` also flags trigger classes. A trigger must omit `usableAsTool` for Creator Portal approval; disable that rule only on the trigger class and assert the built trigger description lacks the property. Keep action-node eligibility independent.
 - Do not add an `NPM_TOKEN` secret fallback for this package; token auth hides Trusted Publishing misconfiguration and is not the intended release path.
 - In a multi-integration repository, avoid repo-wide `vX.Y.Z` tags for n8n releases; they collide with unrelated integration versions.
 - Do not let package-created release tags retrigger the package workflow; the approved release job should create the tag after the committed release PR has been tested and packed.
