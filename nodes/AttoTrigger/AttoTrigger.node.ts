@@ -48,6 +48,8 @@ const AMOUNT_UNITS = [
 	},
 ];
 
+// Trigger nodes cannot be invoked as AI tools.
+// eslint-disable-next-line @n8n/community-nodes/node-usable-as-tool
 export class AttoTrigger implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Atto Trigger',
@@ -65,7 +67,6 @@ export class AttoTrigger implements INodeType {
 		},
 		inputs: [],
 		outputs: [NodeConnectionTypes.Main],
-		usableAsTool: true,
 		credentials: [
 			{
 				name: 'attoApi',
