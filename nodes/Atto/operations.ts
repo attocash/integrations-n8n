@@ -848,6 +848,47 @@ export function attoHttpStreamRequest(request: AttoStreamRequest): AttoHttpStrea
 	throw new Error(`Unsupported Atto ${request.event} stream route: ${request.route}`);
 }
 
+function resumedHttpStreamRequest(
+	request: AttoStreamRequest,
+	lastHeights: Map<string, bigint>,
+): AttoHttpStreamRequest {
+	if (
+		(request.event !== 'transaction' && request.event !== 'accountEntry') ||
+		(request.route !== 'publicKey' && request.route !== 'addresses')
+	) {
+		return attoHttpStreamRequest(request);
+	}
+
+	const fromHeight = (address: AttoAddress) => {
+		const lastHeight = lastHeights.get(address.value);
+		return lastHeight === undefined ? (request.fromHeight ?? '1') : (lastHeight + 1n).toString();
+	};
+	const addresses = requiredStreamAddresses(request);
+	if (request.route === 'publicKey') {
+		return attoHttpStreamRequest({ ...request, fromHeight: fromHeight(addresses[0]) });
+	}
+	const activeAddresses = addresses.filter((address) => !reachedToHeight(request, address, lastHeights));
+	return {
+		...attoHttpStreamRequest(request),
+		body: {
+			search: activeAddresses.map((address) => ({
+				address: address.value,
+				fromHeight: fromHeight(address),
+				...(request.toHeight ? { toHeight: request.toHeight } : {}),
+			})),
+		},
+	};
+}
+
+function reachedToHeight(
+	request: AttoStreamRequest,
+	address: AttoAddress,
+	lastHeights: Map<string, bigint>,
+): boolean {
+	return request.toHeight !== undefined &&
+		(lastHeights.get(address.value) ?? -1n) >= BigInt(request.toHeight);
+}
+
 export async function startAttoEventStream(
 	context: AttoContext,
 	event: AttoTriggerEvent,
@@ -859,9 +900,8 @@ export async function startAttoEventStream(
 	const value = credentials(credentialData);
 	requireNodeUrl(value);
 	requestHeaders(value, 'application/x-ndjson');
-	const request = attoHttpStreamRequest(
-		await attoStreamRequest(event, parameters, credentialData),
-	);
+	const request = await attoStreamRequest(event, parameters, credentialData);
+	const lastHeights = new Map<string, bigint>();
 	let activeController: AbortController | undefined;
 	let activeConnection: Promise<void> | undefined;
 	let reconnectTimer: unknown;
@@ -871,6 +911,12 @@ export async function startAttoEventStream(
 
 	const scheduleReconnect = () => {
 		if (closed || activeController || reconnectTimer !== undefined) return;
+		if (
+			request.toHeight !== undefined &&
+			(request.event === 'transaction' || request.event === 'accountEntry') &&
+			(request.route === 'publicKey' || request.route === 'addresses') &&
+			requiredStreamAddresses(request).every((address) => reachedToHeight(request, address, lastHeights))
+		) return;
 		const delayMs = reconnectDelayMs;
 		reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
 		reconnectTimer = runtime.setTimeout(() => {
@@ -886,7 +932,33 @@ export async function startAttoEventStream(
 		activeController = controller;
 		activeConnection = (async () => {
 			try {
-				const response = await runtime.open(context, value, request, controller.signal);
+				const response = await runtime.open(
+					context,
+					value,
+					resumedHttpStreamRequest(request, lastHeights),
+					controller.signal,
+				);
+				const emitLine = (line: string) => {
+					const parsed = parseAttoJson(line);
+					if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+						throw new Error(`Atto ${event} stream item must contain a JSON object`);
+					}
+					const output = streamEventOutput(event, parsed as IDataObject);
+					if (
+						(event === 'transaction' || event === 'accountEntry') &&
+						(request.route === 'publicKey' || request.route === 'addresses')
+					) {
+						const address = String(output.address);
+						const height = BigInt(String(output.height));
+						const lastHeight = lastHeights.get(address);
+						if (lastHeight !== undefined && height <= lastHeight) return;
+						onEvent(output);
+						lastHeights.set(address, height);
+					} else {
+						onEvent(output);
+					}
+					reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
+				};
 				let pending = '';
 				for await (const chunk of response) {
 					if (closed || streamGeneration !== generation) return;
@@ -895,21 +967,11 @@ export async function startAttoEventStream(
 					pending = lines.pop() ?? '';
 					for (const line of lines) {
 						if (!line.trim()) continue;
-						const parsed = parseAttoJson(line);
-						if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-							throw new Error(`Atto ${event} stream item must contain a JSON object`);
-						}
-						onEvent(streamEventOutput(event, parsed as IDataObject));
-						reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
+						emitLine(line);
 					}
 				}
 				if (pending.trim() && !closed && streamGeneration === generation) {
-					const parsed = parseAttoJson(pending);
-					if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-						throw new Error(`Atto ${event} stream item must contain a JSON object`);
-					}
-					onEvent(streamEventOutput(event, parsed as IDataObject));
-					reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
+					emitLine(pending);
 				}
 			} catch {
 				// Connection and stream failures are retried below.
