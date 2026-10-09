@@ -530,6 +530,142 @@ test('retries normal and erroneous closures with capped backoff, resets on event
 	assert.equal(active.signal.aborted, true);
 });
 
+test('resumes an account-entry trigger after its last emitted height on reconnect', async () => {
+	const fake = fakeRuntime();
+	const output = [];
+	const stream = await startAttoEventStream(
+		{},
+		'accountEntry',
+		{ queryMode: 'manual', addresses: addressFromPublicKey(PUBLIC_KEY).value, fromHeight: '1' },
+		{ nodeUrl: 'http://localhost' },
+		(item) => output.push(item),
+		fake.runtime,
+	);
+	try {
+		assert.match(fake.subscriptions[0].request.path, /fromHeight=1/);
+		fake.subscriptions[0].emit(ACCOUNT_ENTRY);
+		await delay(0);
+		assert.equal(output.length, 1);
+
+		fake.subscriptions[0].close();
+		await delay(0);
+		fake.runNextTimer();
+		await delay(0);
+
+		assert.match(fake.subscriptions[1].request.path, /fromHeight=2/);
+		fake.subscriptions[1].emit(ACCOUNT_ENTRY);
+		await delay(0);
+		assert.equal(output.length, 1);
+	} finally {
+		await stream.close();
+	}
+});
+
+test('resumes each manually selected account from its own last emitted height', async () => {
+	const fake = fakeRuntime();
+	const output = [];
+	const addresses = [PUBLIC_KEY, OTHER_PUBLIC_KEY].map((key) => addressFromPublicKey(key).value);
+	const stream = await startAttoEventStream(
+		{},
+		'accountEntry',
+		{ queryMode: 'manual', addresses: addresses.join(','), fromHeight: '1' },
+		{ nodeUrl: 'http://localhost' },
+		(item) => output.push(item),
+		fake.runtime,
+	);
+	try {
+		fake.subscriptions[0].emit(ACCOUNT_ENTRY);
+		fake.subscriptions[0].emit({ ...ACCOUNT_ENTRY, publicKey: OTHER_PUBLIC_KEY, height: '3' });
+		await delay(0);
+		assert.equal(output.length, 2);
+
+		fake.subscriptions[0].close();
+		await delay(0);
+		fake.runNextTimer();
+		await delay(0);
+
+		assert.deepEqual(fake.subscriptions[1].request.body.search, [
+			{ address: addresses[0], fromHeight: '2' },
+			{ address: addresses[1], fromHeight: '4' },
+		]);
+	} finally {
+		await stream.close();
+	}
+});
+
+test('resumes a transaction trigger from the next account height', async () => {
+	const fake = fakeRuntime();
+	const output = [];
+	const stream = await startAttoEventStream(
+		{},
+		'transaction',
+		{ queryMode: 'manual', addresses: addressFromPublicKey(PUBLIC_KEY).value, fromHeight: '2' },
+		{ nodeUrl: 'http://localhost' },
+		(item) => output.push(item),
+		fake.runtime,
+	);
+	try {
+		fake.subscriptions[0].emit(TRANSACTION);
+		await delay(0);
+		assert.equal(output.length, 1);
+		fake.subscriptions[0].close();
+		await delay(0);
+		fake.runNextTimer();
+		await delay(0);
+		assert.match(fake.subscriptions[1].request.path, /fromHeight=3/);
+	} finally {
+		await stream.close();
+	}
+});
+
+test('stops reconnecting after the requested last account height is emitted', async () => {
+	const fake = fakeRuntime();
+	const stream = await startAttoEventStream(
+		{},
+		'accountEntry',
+		{ queryMode: 'manual', addresses: addressFromPublicKey(PUBLIC_KEY).value, fromHeight: '1', toHeight: '1' },
+		{ nodeUrl: 'http://localhost' },
+		() => {},
+		fake.runtime,
+	);
+	try {
+		fake.subscriptions[0].emit(ACCOUNT_ENTRY);
+		await delay(0);
+		fake.subscriptions[0].close();
+		await delay(0);
+		assert.equal(fake.timers.length, 0);
+	} finally {
+		await stream.close();
+	}
+});
+
+test('omits completed addresses when reconnecting a bounded account-entry stream', async () => {
+	const fake = fakeRuntime();
+	const addresses = [PUBLIC_KEY, OTHER_PUBLIC_KEY].map((key) => addressFromPublicKey(key).value);
+	const stream = await startAttoEventStream(
+		{},
+		'accountEntry',
+		{ queryMode: 'manual', addresses: addresses.join(','), fromHeight: '1', toHeight: '3' },
+		{ nodeUrl: 'http://localhost' },
+		() => {},
+		fake.runtime,
+	);
+	try {
+		fake.subscriptions[0].emit({ ...ACCOUNT_ENTRY, height: '3' });
+		fake.subscriptions[0].emit({ ...ACCOUNT_ENTRY, publicKey: OTHER_PUBLIC_KEY, height: '1' });
+		await delay(0);
+		fake.subscriptions[0].close();
+		await delay(0);
+		fake.runNextTimer();
+		await delay(0);
+		assert.deepEqual(fake.subscriptions[1].request.body.search, [
+			{ address: addresses[1], fromHeight: '2', toHeight: '3' },
+		]);
+	} finally {
+		await stream.close();
+	}
+});
+
 test('connection failures retry without failing startup and close cancels a pending reconnect', async () => {
 	const fake = fakeRuntime({ connectionFailures: 1 });
 	const stream = await startAttoEventStream(

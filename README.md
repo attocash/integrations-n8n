@@ -102,7 +102,7 @@ Send and receive wait up to 60 seconds for publication by default. Stream reads 
 | Transaction | Hash, credential-derived address, manual addresses, or all transactions |
 | Account Entry | Hash, credential-derived address, manual addresses, or all entries |
 
-Triggers use Atto's NDJSON endpoints. When a stream closes or fails, the node reconnects with exponential backoff from 1 to 30 seconds. Receiving an event resets the delay.
+Triggers use Atto's NDJSON endpoints. When a stream closes or fails, the node reconnects with exponential backoff from 1 to 30 seconds. Receiving an event resets the delay. Address-filtered transaction and account-entry triggers resume after the last emitted height for each address; a configured To Height ends reconnection after every selected address reaches it. The resume positions are held in memory for the life of the trigger.
 
 ## Example workflows
 
