@@ -34,7 +34,17 @@ It includes two nodes:
 
 ## Installation
 
-### Self-hosted n8n
+### Install from the n8n canvas
+
+Atto maintains this [verified n8n community integration](https://n8n.io/integrations/atto/). On n8n Cloud and self-hosted n8n, an instance owner or admin can install it when verified community nodes are enabled.
+
+1. Open a workflow canvas and select **+** to open the nodes panel.
+2. Search for **Atto** and select the verified result under **More from the community**.
+3. Select **Install**. Once installed, all instance members can add **Atto** and **Atto Trigger** to their workflows.
+
+See the [n8n verified community node installation guide](https://docs.n8n.io/integrations/community-nodes/installation/verified-install/) for the feature settings on Cloud and self-hosted instances.
+
+### Install from npm on self-hosted n8n
 
 1. Open **Settings > Community Nodes**.
 2. Select **Install**.
@@ -126,11 +136,11 @@ The node does not log or return wallet secrets, seeds, private keys, or API keys
 | Component | Requirement |
 | --- | --- |
 | n8n node metadata | Nodes API v1 |
-| Node.js runtime and development | 22.22.0 or newer |
-| Package manager | npm |
+| Node.js for self-hosted n8n and development | 22.22.0 or newer |
+| Package manager for manual installation and development | npm |
 | Container integration tests | Docker or a local Podman socket |
 
-The Node.js requirement is checked when npm installs the package. The official current n8n container image uses a compatible runtime; custom installations must provide Node.js 22.22.0 or newer.
+For self-hosting, use a current official n8n container image or provide Node.js 22.22.0 or newer in your custom installation.
 
 ## Development
 
