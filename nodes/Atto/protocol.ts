@@ -206,15 +206,24 @@ export function parseHash(value: unknown): string {
 	return AttoHash.Companion.parse(normalized).toString();
 }
 
-export function parseAmount(value: unknown, unit: unknown, fieldName: string): CommonsAmount {
+function amountFromInput(value: unknown, unit: unknown, fieldName: string): CommonsAmount {
 	const normalized = typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
 	if (!normalized) throw new Error(`${fieldName} is required`);
-	const amount = CommonsAmount.from(
+	return CommonsAmount.from(
 		String(unit).toUpperCase() === 'RAW' ? AttoUnit.RAW : AttoUnit.ATTO,
 		normalized,
 	);
+}
+
+export function parseAmount(value: unknown, unit: unknown, fieldName: string): CommonsAmount {
+	const amount = amountFromInput(value, unit, fieldName);
 	if (amount.toString() === '0') throw new Error(`${fieldName} must be a positive Atto amount`);
 	return amount;
+}
+
+export function receivableMinimumRaw(value: unknown, unit: unknown): string {
+	if (value === undefined || value === null || (typeof value === 'string' && !value.trim())) return '0';
+	return amountFromInput(value, unit ?? 'RAW', 'Minimum Amount').toString();
 }
 
 export function amountOutput(value: unknown): IDataObject {

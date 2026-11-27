@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { Readable } from 'node:stream';
 import { setTimeout as delay } from 'node:timers/promises';
 
 import {
@@ -19,7 +20,7 @@ const { NodeApiError, NodeOperationError } = require('n8n-workflow');
 
 import { Atto } from '../dist/nodes/Atto/Atto.node.js';
 import { AttoTrigger } from '../dist/nodes/AttoTrigger/AttoTrigger.node.js';
-import { executeAttoOperation } from '../dist/nodes/Atto/operations.js';
+import { attoHttpStreamRequest, attoStreamRequest, executeAttoOperation } from '../dist/nodes/Atto/operations.js';
 import {
 	addressFromPublicKey,
 	blockHash,
@@ -225,6 +226,47 @@ test('a finite read stops at its deadline and keeps entries collected so far', a
 	}, { nodeUrl: 'http://localhost' });
 	assert.equal(streamSignal.aborted, true);
 	assert.deepEqual(result.map((item) => item.height), ['1']);
+});
+
+test('a receivable read accepts an explicit zero floor and preserves numeric and exact raw thresholds', async () => {
+	const address = addressFromPublicKey('11'.repeat(32)).value;
+	const requested = [];
+	const context = {
+		helpers: {
+			httpRequest: async ({ url }) => {
+				requested.push(new URL(url).searchParams.get('minAmount'));
+				return Readable.from([]);
+			},
+		},
+	};
+	const cases = [
+		['0', 'RAW', '0'],
+		['0.000000000', 'ATTO', '0'],
+		[7, 'RAW', '7'],
+		[0.125, 'ATTO', '125000000'],
+		['9007199254740993', 'RAW', '9007199254740993'],
+		['', 'RAW', '0'],
+	];
+	for (const [minAmount, minAmountUnit, expected] of cases) {
+		const result = await executeAttoOperation(context, 'getReceivables', {
+			addressSource: 'manual', addresses: address, minAmount, minAmountUnit,
+		}, { nodeUrl: 'http://localhost' });
+		assert.deepEqual(result, []);
+		assert.equal(requested.at(-1), expected);
+	}
+});
+
+test('a receivable trigger accepts zero in both units and applies a numeric minimum', async () => {
+	const address = addressFromPublicKey('11'.repeat(32)).value;
+	for (const [minAmount, minAmountUnit, expected] of [
+		['0', 'RAW', '0'], ['0.000000000', 'ATTO', '0'], [3, 'ATTO', '3000000000'],
+	]) {
+		const filter = await attoStreamRequest('receivable', {
+			addressSource: 'manual', addresses: address, minAmount, minAmountUnit,
+		});
+		const request = attoHttpStreamRequest(filter);
+		assert.equal(new URL(request.path, 'http://localhost').searchParams.get('minAmount'), expected);
+	}
 });
 
 test('keeps field-specific amount and send validation around Commons', () => {

@@ -21,6 +21,7 @@ import {
 	parseAmount,
 	parseAttoJson,
 	parseHash,
+	receivableMinimumRaw,
 	receivableOutput,
 	signedTransaction,
 	streamEventOutput,
@@ -425,9 +426,7 @@ async function receivableStreamRequest(
 	timeoutMs?: number,
 ): Promise<StreamRequest> {
 	const addresses = (await addressesForSource(parameters, value)) ?? [];
-	const minimum = optionalText(parameters.minAmount)
-		? parseAmount(parameters.minAmount, parameters.minAmountUnit ?? 'RAW', 'Minimum Amount').toString()
-		: '0';
+	const minimum = receivableMinimumRaw(parameters.minAmount, parameters.minAmountUnit);
 	const limits = streamLimits(parameters);
 	return {
 		method: 'POST',
@@ -720,13 +719,7 @@ export async function attoStreamRequest(
 		const request = addressStreamRoute(event, await addressesForSource(parameters, value));
 		return {
 			...request,
-			minAmount: optionalText(parameters.minAmount)
-				? parseAmount(
-						parameters.minAmount,
-						parameters.minAmountUnit ?? 'RAW',
-						'Minimum Amount',
-					).toString()
-				: '0',
+			minAmount: receivableMinimumRaw(parameters.minAmount, parameters.minAmountUnit),
 		};
 	}
 
