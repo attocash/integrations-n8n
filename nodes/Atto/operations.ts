@@ -278,6 +278,8 @@ async function requestStream(
 	};
 	const items: IDataObject[] = [];
 	let pending = '';
+	// The HTTP helper can return an open response body before its timeout expires.
+	const deadline = scheduleTimeout(() => controller.abort(), request.timeoutMs);
 
 	try {
 		const response = await context.helpers.httpRequest(options);
@@ -303,6 +305,8 @@ async function requestStream(
 	} catch (error) {
 		if (controller.signal.aborted || isExpectedStreamEnd(error)) return items;
 		throw apiError(context, error, `Atto API stream failed: ${request.method} /${request.path}`);
+	} finally {
+		deadline.abort();
 	}
 }
 
@@ -388,8 +392,12 @@ async function addressesForQuery(
 function streamLimits(parameters: AttoParameters): { maxItems: number; timeoutMs: number } {
 	return {
 		maxItems: positiveInteger(parameters.maxItems ?? 25, 'Max Items'),
-		timeoutMs: positiveInteger(parameters.timeoutMs ?? DEFAULT_STREAM_TIMEOUT_MS, 'Timeout'),
+		timeoutMs: readTimeoutMs(parameters),
 	};
+}
+
+function readTimeoutMs(parameters: AttoParameters): number {
+	return positiveInteger(parameters.timeoutMs ?? DEFAULT_STREAM_TIMEOUT_MS, 'Timeout');
 }
 
 function heightQuery(parameters: AttoParameters): string {
@@ -630,7 +638,9 @@ export async function executeAttoOperation(
 	if (operation === 'getTransactions') {
 		if (queryMode(parameters.queryMode) === 'hash') {
 			const hash = parseHash(parameters.hash);
-			const transaction = (await requestJson(execution, value, requireNodeUrl(value), 'GET', `transactions/${hash}`)) as IDataObject;
+			const transaction = (await requestJson(execution, value, requireNodeUrl(value), 'GET', `transactions/${hash}`, {
+				timeoutMs: readTimeoutMs(parameters),
+			})) as IDataObject;
 			return [transactionOutput(transaction)];
 		}
 		return (await requestStream(execution, value, await transactionStreamRequest(parameters, value))).map((item) => transactionOutput(item));

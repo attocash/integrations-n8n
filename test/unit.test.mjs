@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { setTimeout as delay } from 'node:timers/promises';
 
 import {
 	AttoAlgorithm,
@@ -168,6 +169,62 @@ test('returns the stable account output without a raw-output option', async () =
 		frontier: account.lastTransactionHash,
 	});
 	assert.equal('serverMetadata' in result, false);
+});
+
+test('transaction hash lookups pass the configured timeout to n8n', async () => {
+	const hash = 'AB'.repeat(32);
+	const publicKey = '11'.repeat(32);
+	const transaction = {
+		block: {
+			type: 'SEND', network: 'LOCAL', version: 0, algorithm: 'V1', publicKey,
+			height: '2', balance: '900', timestamp: 1705517157478, previous: hash,
+			receiverAlgorithm: 'V1', receiverPublicKey: '22'.repeat(32), amount: '100',
+		},
+		signature: '00'.repeat(64),
+		work: '00'.repeat(8),
+	};
+	const requests = [];
+	const context = {
+		helpers: {
+			httpRequest: async (options) => {
+				requests.push(options);
+				return JSON.stringify(transaction);
+			},
+		},
+	};
+	const credentials = { nodeUrl: 'http://localhost' };
+	const result = await executeAttoOperation(context, 'getTransactions', {
+		queryMode: 'hash', hash, timeoutMs: 125,
+	}, credentials);
+	assert.equal(requests[0].url, `${credentials.nodeUrl}/transactions/${hash}`);
+	assert.equal(requests[0].timeout, 125);
+	assert.equal(result.length, 1);
+	assert.equal(result[0].height, '2');
+});
+
+test('a finite read stops at its deadline and keeps entries collected so far', async () => {
+	const entry = {
+		hash: 'AB'.repeat(32), algorithm: 'V1', publicKey: '11'.repeat(32), height: '1',
+		blockType: 'OPEN', subjectAlgorithm: 'V1', subjectPublicKey: '22'.repeat(32),
+		previousBalance: '0', balance: '100', timestamp: 1705517157478,
+	};
+	let streamSignal;
+	const context = {
+		helpers: {
+			// Model a helper that returns immediately once the response headers arrive.
+			httpRequest: async function* ({ abortSignal }) {
+				streamSignal = abortSignal;
+				yield `${JSON.stringify(entry)}\n`;
+				await delay(300, undefined, { signal: abortSignal });
+				yield `${JSON.stringify({ ...entry, hash: 'CD'.repeat(32), height: '2' })}\n`;
+			},
+		},
+	};
+	const result = await executeAttoOperation(context, 'getAccountEntries', {
+		queryMode: 'all', maxItems: 3, timeoutMs: 50,
+	}, { nodeUrl: 'http://localhost' });
+	assert.equal(streamSignal.aborted, true);
+	assert.deepEqual(result.map((item) => item.height), ['1']);
 });
 
 test('keeps field-specific amount and send validation around Commons', () => {
